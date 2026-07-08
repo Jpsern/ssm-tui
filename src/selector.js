@@ -1,19 +1,132 @@
 const readline = require('readline');
 
+const ANSI = {
+  reset: '\x1b[0m',
+  bold: '\x1b[1m',
+  dim: '\x1b[2m',
+  inverse: '\x1b[7m',
+  red: '\x1b[31m',
+  yellow: '\x1b[33m',
+  cyan: '\x1b[36m',
+};
+
+function supportsColor() {
+  return Boolean(process.stdout.isTTY);
+}
+
+function paint(text, code) {
+  if (!supportsColor() || !code) {
+    return text;
+  }
+
+  return `${code}${text}${ANSI.reset}`;
+}
+
+function visibleWidth(text) {
+  return text.replace(/\x1b\[[0-9;]*m/g, '').length;
+}
+
+function truncateAnsi(text, width) {
+  if (width <= 0) {
+    return '';
+  }
+
+  const plainWidth = visibleWidth(text);
+  if (plainWidth <= width) {
+    return text;
+  }
+
+  if (width === 1) {
+    return '…';
+  }
+
+  const target = width - 1;
+  const tokens = text.match(/\x1b\[[0-9;]*m|./gu) || [];
+  let seen = 0;
+  let result = '';
+
+  for (const token of tokens) {
+    if (token.startsWith('\x1b[')) {
+      result += token;
+      continue;
+    }
+
+    if (seen >= target) {
+      break;
+    }
+
+    result += token;
+    seen += 1;
+  }
+
+  return `${result}…`;
+}
+
+function fitLine(text, width) {
+  return truncateAnsi(text, width);
+}
+
+function box(lines, title) {
+  const content = [];
+  if (title) {
+    content.push(title);
+  }
+  content.push(...lines);
+
+  const width = content.reduce((max, line) => Math.max(max, visibleWidth(line)), 0);
+  const top = `┌${'─'.repeat(width + 2)}┐`;
+  const bottom = `└${'─'.repeat(width + 2)}┘`;
+  const body = content.map((line) => `│ ${line}${' '.repeat(width - visibleWidth(line))} │`);
+  return [top, ...body, bottom].join('\n');
+}
+
 function isCancellationError(error) {
   return Boolean(error && error.code === 'SELECTION_CANCELLED');
 }
 
 function renderList(instances, selectedIndex) {
-  const maxNameLength = instances.reduce((max, item) => Math.max(max, item.name.length), 0);
-  const lines = ['? 接続先を選択してください', ''];
+  const terminalWidth = process.stdout.columns || 80;
+  const lines = [
+    paint('? 接続先を選択してください', ANSI.bold),
+    paint('↑↓/k j で移動  Enter で決定  Ctrl-C で終了', ANSI.dim),
+    '',
+  ];
 
   instances.forEach((instance, index) => {
-    const pointer = index === selectedIndex ? '❯' : ' ';
-    const name = instance.name.padEnd(maxNameLength, ' ');
-    const suffix = instance.description ? `  ${instance.description}` : '';
-    lines.push(`${pointer} ${name}${suffix}`);
+    const isSelected = index === selectedIndex;
+    const pointer = isSelected ? paint('❯', ANSI.cyan) : ' ';
+    const parts = [instance.name];
+    if (instance.description) {
+      parts.push(paint(`  ${instance.description}`, ANSI.dim));
+    }
+    if (instance.group) {
+      parts.push(paint(`  [${instance.group}]`, ANSI.dim));
+    }
+    const row = `${pointer} ${parts.join('')}`;
+    lines.push(fitLine(isSelected ? paint(row, ANSI.inverse) : row, terminalWidth));
   });
+
+  const selected = instances[selectedIndex];
+  if (selected) {
+    lines.push('');
+    const detailLines = [
+      `${paint('Name', ANSI.dim)}: ${selected.name}`,
+      `${paint('Instance ID', ANSI.dim)}: ${selected.instance_id}`,
+    ];
+    if (selected.group) {
+      detailLines.push(`${paint('Group', ANSI.dim)}: ${selected.group}`);
+    }
+    if (selected.description) {
+      detailLines.push(`${paint('Description', ANSI.dim)}: ${selected.description}`);
+    }
+    if (selected.aws_profile) {
+      detailLines.push(`${paint('Profile', ANSI.dim)}: ${selected.aws_profile}`);
+    }
+    if (selected.region) {
+      detailLines.push(`${paint('Region', ANSI.dim)}: ${selected.region}`);
+    }
+    lines.push(box(detailLines.map((line) => fitLine(line, terminalWidth - 4))));
+  }
 
   return lines.join('\n');
 }
@@ -75,6 +188,18 @@ function selectInstance(instances) {
         return;
       }
 
+      if (key.name === 'j' && !key.ctrl && !key.meta) {
+        selectedIndex = selectedIndex === instances.length - 1 ? 0 : selectedIndex + 1;
+        draw();
+        return;
+      }
+
+      if (key.name === 'k' && !key.ctrl && !key.meta) {
+        selectedIndex = selectedIndex === 0 ? instances.length - 1 : selectedIndex - 1;
+        draw();
+        return;
+      }
+
       if (key.name === 'return') {
         finish(instances[selectedIndex]);
         return;
@@ -99,28 +224,29 @@ function selectInstance(instances) {
 function confirmConnection(instance) {
   const isProduction = typeof instance.group === 'string' && ['production', 'prod'].includes(instance.group.toLowerCase());
   const title = isProduction
-    ? 'WARNING: production 環境への接続です。'
-    : '以下の接続先に接続します。';
-
-  const lines = [title, ''];
-  lines.push(`Name: ${instance.name}`);
-  lines.push(`Instance ID: ${instance.instance_id}`);
+    ? paint('WARNING: production 環境への接続です。', ANSI.red + ANSI.bold)
+    : paint('以下の接続先に接続します。', ANSI.bold);
+  const lines = [
+    `${paint('Name', ANSI.dim)}: ${instance.name}`,
+    `${paint('Instance ID', ANSI.dim)}: ${instance.instance_id}`,
+  ];
   if (instance.group) {
-    lines.push(`Group: ${instance.group}`);
+    lines.push(`${paint('Group', ANSI.dim)}: ${instance.group}`);
   }
   if (instance.description) {
-    lines.push(`Description: ${instance.description}`);
+    lines.push(`${paint('Description', ANSI.dim)}: ${instance.description}`);
   }
   if (instance.aws_profile) {
-    lines.push(`Profile: ${instance.aws_profile}`);
+    lines.push(`${paint('Profile', ANSI.dim)}: ${instance.aws_profile}`);
   }
   if (instance.region) {
-    lines.push(`Region: ${instance.region}`);
+    lines.push(`${paint('Region', ANSI.dim)}: ${instance.region}`);
   }
   lines.push('');
-  lines.push(isProduction ? '本当に接続しますか？ (y/N)' : '接続しますか？ (y/N)');
+  lines.push(isProduction ? paint('本当に接続しますか？ (y/N)', ANSI.yellow) : '接続しますか？ (y/N)');
 
-  console.log(lines.join('\n'));
+  process.stdout.write('\x1b[2J\x1b[H');
+  console.log(box(lines, title));
 
   return new Promise((resolve) => {
     const rl = readline.createInterface({

@@ -49,6 +49,13 @@ ssm-tui
 npm run start
 ```
 
+## 使い方
+
+- `↑↓` または `j/k` で接続先を移動
+- `Enter` で選択
+- `Ctrl-C` でキャンセル
+- 本番系の `group` は確認時に強めの警告を表示
+
 ## production 警告
 
 `group` が `production` または `prod` の場合、接続前に強い警告を表示します。
