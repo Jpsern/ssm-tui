@@ -1,0 +1,14 @@
+instances:
+  - name: develop-web-1
+    instance_id: i-xxxxxxxxxxxxxxxxx
+    group: develop
+    description: 開発環境 Web サーバー
+    aws_profile: default
+    region: ap-northeast-1
+
+  - name: staging-web-1
+    instance_id: i-yyyyyyyyyyyyyyyyy
+    group: staging
+    description: ステージング Web サーバー
+    aws_profile: staging
+    region: ap-northeast-1

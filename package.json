@@ -1,0 +1,13 @@
+{
+  "name": "ssm-tui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interactive CLI for AWS Systems Manager Session Manager",
+  "main": "src/index.js",
+  "bin": {
+    "ssm-tui": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  }
+}
