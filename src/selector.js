@@ -136,6 +136,17 @@ function computeWindow(total, selectedIndex, rows) {
   return { start, end };
 }
 
+function renderProgressBar(selectedIndex, total, width = 18) {
+  if (total <= 1) {
+    return paint(`[${'■'.repeat(width)}]`, ANSI.dim);
+  }
+
+  const ratio = selectedIndex / (total - 1);
+  const filled = Math.max(1, Math.min(width, Math.round(ratio * width) + 1));
+  const empty = width - filled;
+  return `${paint('[' + '■'.repeat(filled), ANSI.cyan)}${'□'.repeat(empty)}]`;
+}
+
 function isCancellationError(error) {
   return Boolean(error && error.code === 'SELECTION_CANCELLED');
 }
@@ -146,12 +157,13 @@ function renderList(instances, selectedIndex) {
   const selected = instances[selectedIndex];
   const detailLines = selected ? getDetailLines(selected) : [];
   const detailBoxHeight = selected ? detailLines.length + 3 : 0;
-  const headerLines = 3;
+  const headerLines = 4;
   const listRows = Math.max(1, terminalHeight - headerLines - detailBoxHeight);
   const { start, end } = computeWindow(instances.length, selectedIndex, listRows);
   const lines = [
     paint(`? 接続先を選択してください (${selectedIndex + 1}/${instances.length})`, ANSI.bold),
     paint('↑↓/k j で移動  Enter で決定  Ctrl-C で終了', ANSI.dim),
+    renderProgressBar(selectedIndex, instances.length),
     '',
   ];
 
@@ -232,6 +244,30 @@ function selectInstance(instances) {
         return;
       }
 
+      if (key.name === 'pageup') {
+        selectedIndex = Math.max(0, selectedIndex - listPageSize());
+        draw();
+        return;
+      }
+
+      if (key.name === 'pagedown') {
+        selectedIndex = Math.min(instances.length - 1, selectedIndex + listPageSize());
+        draw();
+        return;
+      }
+
+      if (key.name === 'home') {
+        selectedIndex = 0;
+        draw();
+        return;
+      }
+
+      if (key.name === 'end') {
+        selectedIndex = instances.length - 1;
+        draw();
+        return;
+      }
+
       if (key.name === 'j' && !key.ctrl && !key.meta) {
         selectedIndex = selectedIndex === instances.length - 1 ? 0 : selectedIndex + 1;
         draw();
@@ -263,6 +299,11 @@ function selectInstance(instances) {
     process.stdin.on('keypress', onKeypress);
     draw();
   });
+}
+
+function listPageSize() {
+  const terminalHeight = process.stdout.rows || 24;
+  return Math.max(1, terminalHeight - 8);
 }
 
 function confirmConnection(instance) {
