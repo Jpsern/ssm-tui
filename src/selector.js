@@ -8,6 +8,8 @@ const ANSI = {
   red: '\x1b[31m',
   yellow: '\x1b[33m',
   green: '\x1b[92m',
+  black: '\x1b[30m',
+  bgGreen: '\x1b[42m',
 };
 
 function supportsColor() {
@@ -106,6 +108,15 @@ function fitLine(text, width) {
   return truncateAnsi(text, width);
 }
 
+function padLine(text, width) {
+  const current = displayWidth(text);
+  if (current >= width) {
+    return text;
+  }
+
+  return `${text}${' '.repeat(width - current)}`;
+}
+
 function box(lines, title) {
   const content = [];
   if (title) {
@@ -144,19 +155,23 @@ function getDetailLines(instance) {
 
 function renderInstanceRow(instance, index, selectedIndex, terminalWidth) {
   const isSelected = index === selectedIndex;
-  const pointer = isSelected ? paint('❯', ANSI.green) : ' ';
+  const pointer = '❯';
   const parts = [instance.name];
 
   if (instance.description) {
-    parts.push(paint(`  ${instance.description}`, ANSI.dim));
+    parts.push(`  ${instance.description}`);
   }
 
   if (instance.group) {
-    parts.push(paint(`  [${instance.group}]`, ANSI.dim));
+    parts.push(`  [${instance.group}]`);
   }
 
   const row = `${pointer} ${parts.join('')}`;
-  return fitLine(isSelected ? paint(row, ANSI.inverse) : row, terminalWidth);
+  if (isSelected) {
+    return paint(padLine(fitLine(row, terminalWidth), terminalWidth), `${ANSI.bgGreen}${ANSI.black}`);
+  }
+
+  return fitLine(`  ${parts.join('')}`, terminalWidth);
 }
 
 function computeWindow(total, selectedIndex, rows) {
