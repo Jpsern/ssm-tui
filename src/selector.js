@@ -7,7 +7,7 @@ const ANSI = {
   inverse: '\x1b[7m',
   red: '\x1b[31m',
   yellow: '\x1b[33m',
-  cyan: '\x1b[36m',
+  green: '\x1b[92m',
 };
 
 function supportsColor() {
@@ -144,7 +144,7 @@ function getDetailLines(instance) {
 
 function renderInstanceRow(instance, index, selectedIndex, terminalWidth) {
   const isSelected = index === selectedIndex;
-  const pointer = isSelected ? paint('❯', ANSI.cyan) : ' ';
+  const pointer = isSelected ? paint('❯', ANSI.green) : ' ';
   const parts = [instance.name];
 
   if (instance.description) {
