@@ -184,7 +184,17 @@ function renderProgressBar(selectedIndex, total, width = 18) {
   const ratio = selectedIndex / (total - 1);
   const filled = Math.max(1, Math.min(width, Math.round(ratio * width) + 1));
   const empty = width - filled;
-  return `${paint('[' + '■'.repeat(filled), ANSI.cyan)}${'□'.repeat(empty)}]`;
+  return `${paint('[' + '■'.repeat(filled), ANSI.green)}${'□'.repeat(empty)}]`;
+}
+
+function renderHeader(selectedIndex, total) {
+  const title = paint('接続先を選択してください', ANSI.bold);
+  const lines = [
+    `${paint('操作', ANSI.dim)}: ${paint('↑↓ / jk', ANSI.green)} ${paint('Enter', ANSI.green)} ${paint('Ctrl-C', ANSI.green)}`,
+    `${paint('件数', ANSI.dim)}: ${selectedIndex + 1}/${total}`,
+  ];
+
+  return box(lines, `${title} ${paint('・', ANSI.dim)} ${renderProgressBar(selectedIndex, total, 12)}`);
 }
 
 function isCancellationError(error) {
@@ -197,15 +207,10 @@ function renderList(instances, selectedIndex) {
   const selected = instances[selectedIndex];
   const detailLines = selected ? getDetailLines(selected) : [];
   const detailBoxHeight = selected ? detailLines.length + 3 : 0;
-  const headerLines = 4;
+  const headerLines = 6;
   const listRows = Math.max(1, terminalHeight - headerLines - detailBoxHeight);
   const { start, end } = computeWindow(instances.length, selectedIndex, listRows);
-  const lines = [
-    paint(`? 接続先を選択してください (${selectedIndex + 1}/${instances.length})`, ANSI.bold),
-    paint('↑↓/k j で移動  Enter で決定  Ctrl-C で終了', ANSI.dim),
-    renderProgressBar(selectedIndex, instances.length),
-    '',
-  ];
+  const lines = [renderHeader(selectedIndex, instances.length), ''];
 
   if (start > 0) {
     lines.push(paint(`... 上に ${start} 件`, ANSI.dim));
