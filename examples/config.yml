@@ -12,3 +12,24 @@ instances:
     description: ステージング Web サーバー
     aws_profile: staging
     region: ap-northeast-1
+
+  - name: production-web-1
+    instance_id: i-zzzzzzzzzzzzzzzzz
+    group: production
+    description: 本番環境 Web サーバー
+    aws_profile: production
+    region: ap-northeast-1
+
+  - name: develop-db-1
+    instance_id: i-aaaaaaaaaaaaaaaaa
+    group: develop
+    description: 開発環境 DB サーバー
+    aws_profile: default
+    region: ap-northeast-1
+
+  - name: batch-worker-1
+    instance_id: i-bbbbbbbbbbbbbbbbb
+    group: batch
+    description: バッチ処理用ワーカー
+    aws_profile: default
+    region: ap-northeast-1
