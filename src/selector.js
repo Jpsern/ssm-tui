@@ -80,51 +80,95 @@ function box(lines, title) {
   return [top, ...body, bottom].join('\n');
 }
 
+function getDetailLines(instance) {
+  const lines = [
+    `${paint('Name', ANSI.dim)}: ${instance.name}`,
+    `${paint('Instance ID', ANSI.dim)}: ${instance.instance_id}`,
+  ];
+
+  if (instance.group) {
+    lines.push(`${paint('Group', ANSI.dim)}: ${instance.group}`);
+  }
+  if (instance.description) {
+    lines.push(`${paint('Description', ANSI.dim)}: ${instance.description}`);
+  }
+  if (instance.aws_profile) {
+    lines.push(`${paint('Profile', ANSI.dim)}: ${instance.aws_profile}`);
+  }
+  if (instance.region) {
+    lines.push(`${paint('Region', ANSI.dim)}: ${instance.region}`);
+  }
+
+  return lines;
+}
+
+function renderInstanceRow(instance, index, selectedIndex, terminalWidth) {
+  const isSelected = index === selectedIndex;
+  const pointer = isSelected ? paint('❯', ANSI.cyan) : ' ';
+  const parts = [instance.name];
+
+  if (instance.description) {
+    parts.push(paint(`  ${instance.description}`, ANSI.dim));
+  }
+
+  if (instance.group) {
+    parts.push(paint(`  [${instance.group}]`, ANSI.dim));
+  }
+
+  const row = `${pointer} ${parts.join('')}`;
+  return fitLine(isSelected ? paint(row, ANSI.inverse) : row, terminalWidth);
+}
+
+function computeWindow(total, selectedIndex, rows) {
+  if (total <= rows) {
+    return { start: 0, end: total };
+  }
+
+  const half = Math.floor(rows / 2);
+  let start = Math.max(0, selectedIndex - half);
+  let end = start + rows;
+
+  if (end > total) {
+    end = total;
+    start = Math.max(0, end - rows);
+  }
+
+  return { start, end };
+}
+
 function isCancellationError(error) {
   return Boolean(error && error.code === 'SELECTION_CANCELLED');
 }
 
 function renderList(instances, selectedIndex) {
   const terminalWidth = process.stdout.columns || 80;
+  const terminalHeight = process.stdout.rows || 24;
+  const selected = instances[selectedIndex];
+  const detailLines = selected ? getDetailLines(selected) : [];
+  const detailBoxHeight = selected ? detailLines.length + 3 : 0;
+  const headerLines = 3;
+  const listRows = Math.max(1, terminalHeight - headerLines - detailBoxHeight);
+  const { start, end } = computeWindow(instances.length, selectedIndex, listRows);
   const lines = [
-    paint('? 接続先を選択してください', ANSI.bold),
+    paint(`? 接続先を選択してください (${selectedIndex + 1}/${instances.length})`, ANSI.bold),
     paint('↑↓/k j で移動  Enter で決定  Ctrl-C で終了', ANSI.dim),
     '',
   ];
 
-  instances.forEach((instance, index) => {
-    const isSelected = index === selectedIndex;
-    const pointer = isSelected ? paint('❯', ANSI.cyan) : ' ';
-    const parts = [instance.name];
-    if (instance.description) {
-      parts.push(paint(`  ${instance.description}`, ANSI.dim));
-    }
-    if (instance.group) {
-      parts.push(paint(`  [${instance.group}]`, ANSI.dim));
-    }
-    const row = `${pointer} ${parts.join('')}`;
-    lines.push(fitLine(isSelected ? paint(row, ANSI.inverse) : row, terminalWidth));
-  });
+  if (start > 0) {
+    lines.push(paint(`... 上に ${start} 件`, ANSI.dim));
+  }
 
-  const selected = instances[selectedIndex];
+  for (let index = start; index < end; index += 1) {
+    lines.push(renderInstanceRow(instances[index], index, selectedIndex, terminalWidth));
+  }
+
+  if (end < instances.length) {
+    lines.push(paint(`... 下に ${instances.length - end} 件`, ANSI.dim));
+  }
+
   if (selected) {
     lines.push('');
-    const detailLines = [
-      `${paint('Name', ANSI.dim)}: ${selected.name}`,
-      `${paint('Instance ID', ANSI.dim)}: ${selected.instance_id}`,
-    ];
-    if (selected.group) {
-      detailLines.push(`${paint('Group', ANSI.dim)}: ${selected.group}`);
-    }
-    if (selected.description) {
-      detailLines.push(`${paint('Description', ANSI.dim)}: ${selected.description}`);
-    }
-    if (selected.aws_profile) {
-      detailLines.push(`${paint('Profile', ANSI.dim)}: ${selected.aws_profile}`);
-    }
-    if (selected.region) {
-      detailLines.push(`${paint('Region', ANSI.dim)}: ${selected.region}`);
-    }
     lines.push(box(detailLines.map((line) => fitLine(line, terminalWidth - 4))));
   }
 
