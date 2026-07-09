@@ -191,6 +191,25 @@ function computeWindow(total, selectedIndex, rows) {
   return { start, end };
 }
 
+function computeVisibleWindow(total, selectedIndex, availableRows) {
+  let rows = Math.max(1, availableRows);
+
+  for (let iteration = 0; iteration < 3; iteration += 1) {
+    const window = computeWindow(total, selectedIndex, rows);
+    const overflowLines = (window.start > 0 ? 1 : 0) + (window.end < total ? 1 : 0);
+    const nextRows = Math.max(1, availableRows - overflowLines);
+
+    if (nextRows === rows) {
+      return { rows, ...window };
+    }
+
+    rows = nextRows;
+  }
+
+  const window = computeWindow(total, selectedIndex, rows);
+  return { rows, ...window };
+}
+
 function renderProgressBar(selectedIndex, total, width = 18) {
   if (total <= 1) {
     return paint(`[${'■'.repeat(width)}]`, ANSI.dim);
@@ -223,8 +242,8 @@ function renderList(instances, selectedIndex) {
   const detailLines = selected ? getDetailLines(selected) : [];
   const detailBoxHeight = selected ? detailLines.length + 3 : 0;
   const headerLines = 6;
-  const listRows = Math.max(1, terminalHeight - headerLines - detailBoxHeight);
-  const { start, end } = computeWindow(instances.length, selectedIndex, listRows);
+  const availableRows = Math.max(1, terminalHeight - headerLines - detailBoxHeight);
+  const { start, end } = computeVisibleWindow(instances.length, selectedIndex, availableRows);
   const lines = [renderHeader(selectedIndex, instances.length), ''];
 
   if (start > 0) {
