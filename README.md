@@ -2,9 +2,13 @@
 
 AWS Systems Manager Session Manager で EC2 に接続するための対話式 CLI です。
 
+## デモ
+
+![ssm-tui デモ](docs/images/demo.gif)
+
 ## 前提条件
 
-- Node.js
+- Node.js(>=20.19.0)
 - AWS CLI
 - Session Manager Plugin
 - AWS 認証情報が設定済みであること
