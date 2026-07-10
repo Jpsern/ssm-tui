@@ -336,6 +336,15 @@ function selectInstance(instances) {
       selectedIndex = Math.min(selectedIndex, filteredEntries.length - 1);
     };
 
+    const exitSearchMode = ({ clearQuery = false } = {}) => {
+      if (clearQuery) {
+        query = '';
+      }
+
+      isSearching = false;
+      syncSelection(true);
+    };
+
     const cleanup = () => {
       process.stdin.off('keypress', onKeypress);
       if (process.stdin.isTTY) {
@@ -374,13 +383,13 @@ function selectInstance(instances) {
 
       if (isSearching) {
         if (key.name === 'return') {
-          isSearching = false;
+          exitSearchMode();
           draw();
           return;
         }
 
         if (key.name === 'escape') {
-          isSearching = false;
+          exitSearchMode({ clearQuery: true });
           draw();
           return;
         }
@@ -466,7 +475,7 @@ function selectInstance(instances) {
 
       if (key.name === 'return') {
         if (isSearching) {
-          isSearching = false;
+          exitSearchMode();
           draw();
           return;
         }
