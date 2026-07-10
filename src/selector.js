@@ -153,6 +153,27 @@ function getDetailLines(instance) {
   return lines;
 }
 
+function normalizeSearchText(text) {
+  return text.trim().toLowerCase();
+}
+
+function matchesSearch(instance, query) {
+  if (!query) {
+    return true;
+  }
+
+  const haystack = `${instance.name} ${instance.description ?? ''}`.toLowerCase();
+  return haystack.includes(query);
+}
+
+function buildFilteredEntries(instances, query) {
+  const normalizedQuery = normalizeSearchText(query);
+
+  return instances
+    .map((instance, index) => ({ instance, index }))
+    .filter((entry) => matchesSearch(entry.instance, normalizedQuery));
+}
+
 function renderInstanceRow(instance, index, selectedIndex, terminalWidth) {
   const isSelected = index === selectedIndex;
   const pointer = '❯';
@@ -221,41 +242,58 @@ function renderProgressBar(selectedIndex, total, width = 18) {
   return `${paint('[' + '■'.repeat(filled), ANSI.green)}${'□'.repeat(empty)}]`;
 }
 
-function renderHeader(selectedIndex, total) {
+function renderHeader(selectedIndex, total, query, isSearching) {
   const title = paint('接続先を選択してください', ANSI.bold);
+  const normalizedQuery = normalizeSearchText(query);
+  const visibleCount = total === 0 ? 0 : selectedIndex + 1;
   const lines = [
-    `${paint('操作', ANSI.dim)}: ${paint('↑↓ / jk', ANSI.green)} ${paint('Enter', ANSI.green)} ${paint('Ctrl-C', ANSI.green)}`,
-    `${paint('件数', ANSI.dim)}: ${selectedIndex + 1}/${total}`,
+    `${paint('操作', ANSI.dim)}: ${paint('↑↓ / jk', ANSI.green)} ${paint('Enter', ANSI.green)} ${paint('Ctrl-C', ANSI.green)} ${paint('/', ANSI.green)}${paint('検索', ANSI.dim)}`,
+    `${paint('件数', ANSI.dim)}: ${visibleCount}/${total}`,
   ];
 
-  return box(lines, `${title} ${paint('・', ANSI.dim)} ${renderProgressBar(selectedIndex, total, 12)}`);
+  if (isSearching || normalizedQuery) {
+    lines.push(`${paint('検索', ANSI.dim)}: /${normalizedQuery}${isSearching ? paint('  (入力中)', ANSI.dim) : ''}`);
+  }
+
+  return {
+    text: box(lines, `${title} ${paint('・', ANSI.dim)} ${renderProgressBar(selectedIndex, total, 12)}`),
+    height: lines.length + 3,
+  };
 }
 
 function isCancellationError(error) {
   return Boolean(error && error.code === 'SELECTION_CANCELLED');
 }
 
-function renderList(instances, selectedIndex) {
+function renderList(instances, state) {
+  const { selectedIndex, query, isSearching } = state;
   const terminalWidth = process.stdout.columns || 80;
   const terminalHeight = process.stdout.rows || 24;
-  const selected = instances[selectedIndex];
+  const filteredEntries = buildFilteredEntries(instances, query);
+  const selectedEntry = filteredEntries[selectedIndex];
+  const selected = selectedEntry ? selectedEntry.instance : null;
   const detailLines = selected ? getDetailLines(selected) : [];
   const detailBoxHeight = selected ? detailLines.length + 3 : 0;
-  const headerLines = 6;
-  const availableRows = Math.max(1, terminalHeight - headerLines - detailBoxHeight);
-  const { start, end } = computeVisibleWindow(instances.length, selectedIndex, availableRows);
-  const lines = [renderHeader(selectedIndex, instances.length), ''];
+  const header = renderHeader(selectedIndex, filteredEntries.length, query, isSearching);
+  const availableRows = Math.max(1, terminalHeight - header.height - detailBoxHeight);
+  const { start, end } = computeVisibleWindow(filteredEntries.length, selectedIndex, availableRows);
+  const lines = [header.text, ''];
 
-  if (start > 0) {
-    lines.push(paint(`... 上に ${start} 件`, ANSI.dim));
-  }
+  if (filteredEntries.length === 0) {
+    lines.push(paint('該当する接続先がありません。', ANSI.dim));
+  } else {
+    if (start > 0) {
+      lines.push(paint(`... 上に ${start} 件`, ANSI.dim));
+    }
 
-  for (let index = start; index < end; index += 1) {
-    lines.push(renderInstanceRow(instances[index], index, selectedIndex, terminalWidth));
-  }
+    for (let index = start; index < end; index += 1) {
+      const entry = filteredEntries[index];
+      lines.push(renderInstanceRow(entry.instance, index, selectedIndex, terminalWidth));
+    }
 
-  if (end < instances.length) {
-    lines.push(paint(`... 下に ${instances.length - end} 件`, ANSI.dim));
+    if (end < filteredEntries.length) {
+      lines.push(paint(`... 下に ${filteredEntries.length - end} 件`, ANSI.dim));
+    }
   }
 
   if (selected) {
@@ -272,8 +310,31 @@ function selectInstance(instances) {
   }
 
   return new Promise((resolve, reject) => {
+    let query = '';
+    let isSearching = false;
     let selectedIndex = 0;
+    let filteredEntries = buildFilteredEntries(instances, query);
     let settled = false;
+
+    const syncSelection = (keepSelection = true) => {
+      const previousSelectedInstance = keepSelection ? filteredEntries[selectedIndex]?.instance : null;
+      filteredEntries = buildFilteredEntries(instances, query);
+
+      if (filteredEntries.length === 0) {
+        selectedIndex = 0;
+        return;
+      }
+
+      if (previousSelectedInstance) {
+        const nextIndex = filteredEntries.findIndex((entry) => entry.instance === previousSelectedInstance);
+        if (nextIndex >= 0) {
+          selectedIndex = nextIndex;
+          return;
+        }
+      }
+
+      selectedIndex = Math.min(selectedIndex, filteredEntries.length - 1);
+    };
 
     const cleanup = () => {
       process.stdin.off('keypress', onKeypress);
@@ -302,7 +363,7 @@ function selectInstance(instances) {
 
     const draw = () => {
       process.stdout.write('\x1b[2J\x1b[H');
-      process.stdout.write(renderList(instances, selectedIndex));
+      process.stdout.write(renderList(instances, { selectedIndex, query, isSearching }));
       process.stdout.write('\n');
     };
 
@@ -311,56 +372,118 @@ function selectInstance(instances) {
         return;
       }
 
+      if (isSearching) {
+        if (key.name === 'return') {
+          isSearching = false;
+          draw();
+          return;
+        }
+
+        if (key.name === 'escape') {
+          isSearching = false;
+          draw();
+          return;
+        }
+
+        if (key.name === 'backspace') {
+          query = query.slice(0, -1);
+          syncSelection();
+          draw();
+          return;
+        }
+
+        if (!key.ctrl && !key.meta && typeof key.sequence === 'string' && key.sequence.length === 1) {
+          query += key.sequence;
+          syncSelection();
+          draw();
+          return;
+        }
+      }
+
       if (key.name === 'up') {
-        selectedIndex = selectedIndex === 0 ? instances.length - 1 : selectedIndex - 1;
+        if (filteredEntries.length > 0) {
+          selectedIndex = selectedIndex === 0 ? filteredEntries.length - 1 : selectedIndex - 1;
+        }
         draw();
         return;
       }
 
       if (key.name === 'down') {
-        selectedIndex = selectedIndex === instances.length - 1 ? 0 : selectedIndex + 1;
+        if (filteredEntries.length > 0) {
+          selectedIndex = selectedIndex === filteredEntries.length - 1 ? 0 : selectedIndex + 1;
+        }
         draw();
         return;
       }
 
       if (key.name === 'pageup') {
-        selectedIndex = Math.max(0, selectedIndex - listPageSize());
+        if (filteredEntries.length > 0) {
+          selectedIndex = Math.max(0, selectedIndex - listPageSize());
+        }
         draw();
         return;
       }
 
       if (key.name === 'pagedown') {
-        selectedIndex = Math.min(instances.length - 1, selectedIndex + listPageSize());
+        if (filteredEntries.length > 0) {
+          selectedIndex = Math.min(filteredEntries.length - 1, selectedIndex + listPageSize());
+        }
         draw();
         return;
       }
 
       if (key.name === 'home') {
-        selectedIndex = 0;
+        if (filteredEntries.length > 0) {
+          selectedIndex = 0;
+        }
         draw();
         return;
       }
 
       if (key.name === 'end') {
-        selectedIndex = instances.length - 1;
+        if (filteredEntries.length > 0) {
+          selectedIndex = filteredEntries.length - 1;
+        }
         draw();
         return;
       }
 
       if (key.name === 'j' && !key.ctrl && !key.meta) {
-        selectedIndex = selectedIndex === instances.length - 1 ? 0 : selectedIndex + 1;
+        if (filteredEntries.length > 0) {
+          selectedIndex = selectedIndex === filteredEntries.length - 1 ? 0 : selectedIndex + 1;
+        }
         draw();
         return;
       }
 
       if (key.name === 'k' && !key.ctrl && !key.meta) {
-        selectedIndex = selectedIndex === 0 ? instances.length - 1 : selectedIndex - 1;
+        if (filteredEntries.length > 0) {
+          selectedIndex = selectedIndex === 0 ? filteredEntries.length - 1 : selectedIndex - 1;
+        }
         draw();
         return;
       }
 
       if (key.name === 'return') {
-        finish(instances[selectedIndex]);
+        if (isSearching) {
+          isSearching = false;
+          draw();
+          return;
+        }
+
+        const selectedEntry = filteredEntries[selectedIndex];
+        if (selectedEntry) {
+          finish(selectedEntry.instance);
+        }
+        return;
+      }
+
+      if (key.sequence === '/' && !key.ctrl && !key.meta) {
+        isSearching = true;
+        query = '';
+        selectedIndex = 0;
+        syncSelection(false);
+        draw();
         return;
       }
 
