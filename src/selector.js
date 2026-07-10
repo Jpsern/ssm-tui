@@ -347,6 +347,7 @@ function selectInstance(instances) {
 
     const cleanup = () => {
       process.stdin.off('keypress', onKeypress);
+      process.stdin.off('data', onData);
       if (process.stdin.isTTY) {
         process.stdin.setRawMode(false);
       }
@@ -374,6 +375,17 @@ function selectInstance(instances) {
       process.stdout.write('\x1b[2J\x1b[H');
       process.stdout.write(renderList(instances, { selectedIndex, query, isSearching }));
       process.stdout.write('\n');
+    };
+
+    const onData = (chunk) => {
+      if (!isSearching) {
+        return;
+      }
+
+      if (Buffer.isBuffer(chunk) && chunk.length === 1 && chunk[0] === 0x1b) {
+        exitSearchMode({ clearQuery: true });
+        draw();
+      }
     };
 
     const onKeypress = (_, key) => {
@@ -508,6 +520,7 @@ function selectInstance(instances) {
     process.stdin.resume();
     process.stdout.write('\x1b[?25l');
     process.stdin.on('keypress', onKeypress);
+    process.stdin.on('data', onData);
     draw();
   });
 }
