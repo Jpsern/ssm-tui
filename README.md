@@ -11,7 +11,7 @@ AWS Systems Manager Session Manager で EC2 に接続するための対話式 CL
 - Node.js(>=20.19.0)
 - AWS CLI
 - Session Manager Plugin
-- AWS 認証情報が設定済みであること
+- AWS プロファイル作成済みであること
 
 ## インストール
 
