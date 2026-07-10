@@ -252,7 +252,7 @@ function renderHeader(selectedIndex, total, query, isSearching) {
   ];
 
   if (isSearching || normalizedQuery) {
-    lines.push(`${paint('検索', ANSI.dim)}: /${normalizedQuery}${isSearching ? paint('  (入力中)', ANSI.dim) : ''}`);
+    lines.push(`${paint('検索', ANSI.dim)}: /${normalizedQuery}${isSearching ? paint('  (入力中, Esc で解除)', ANSI.dim) : paint('  (Esc で解除)', ANSI.dim)}`);
   }
 
   return {
